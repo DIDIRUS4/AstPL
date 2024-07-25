@@ -48,6 +48,7 @@
 #include "pathmatcher/MultiMatcher.h"
 #include "pathmatcher/SimplePrefixMatcher.h"
 #include "settings/INIFile.h"
+#include "tools/GenericProfiler.h"
 #include "ui/InstanceWindow.h"
 #include "ui/MainWindow.h"
 
@@ -291,12 +292,17 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
     QString adjustedBy;
     QString dataPath;
     // change folder
+    QString dataDirEnv;
     QString dirParam = parser.value("dir");
     if (!dirParam.isEmpty()) {
         // the dir param. it makes multimc data path point to whatever the user specified
         // on command line
         adjustedBy = "Command line";
         dataPath = dirParam;
+    } else if (dataDirEnv = QProcessEnvironment::systemEnvironment().value(QString("%1_DATA_DIR").arg(BuildConfig.LAUNCHER_NAME.toUpper()));
+               !dataDirEnv.isEmpty()) {
+        adjustedBy = "System environment";
+        dataPath = dataDirEnv;
     } else {
         QDir foo;
         if (DesktopServices::isSnap()) {
@@ -394,20 +400,15 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
     {
         static const QString baseLogFile = BuildConfig.LAUNCHER_NAME + "-%0.log";
         static const QString logBase = FS::PathCombine("logs", baseLogFile);
-        auto moveFile = [](const QString& oldName, const QString& newName) {
-            QFile::remove(newName);
-            QFile::copy(oldName, newName);
-            QFile::remove(oldName);
-        };
         if (FS::ensureFolderPathExists("logs")) {  // if this did not fail
             for (auto i = 0; i <= 4; i++)
                 if (auto oldName = baseLogFile.arg(i);
                     QFile::exists(oldName))  // do not pointlessly delete new files if the old ones are not there
-                    moveFile(oldName, logBase.arg(i));
+                    FS::move(oldName, logBase.arg(i));
         }
 
         for (auto i = 4; i > 0; i--)
-            moveFile(logBase.arg(i - 1), logBase.arg(i));
+            FS::move(logBase.arg(i - 1), logBase.arg(i));
 
         logFile = std::unique_ptr<QFile>(new QFile(logBase.arg(0)));
         if (!logFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
@@ -447,7 +448,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
 
         // search the dataPath()
         // seach app data standard path
-        if (!foundLoggingRules && !isPortable() && dirParam.isEmpty()) {
+        if (!foundLoggingRules && !isPortable() && dirParam.isEmpty() && dataDirEnv.isEmpty()) {
             logRulesPath = QStandardPaths::locate(QStandardPaths::AppDataLocation, FS::PathCombine("..", logRulesFile));
             if (!logRulesPath.isEmpty()) {
                 qDebug() << "Found" << logRulesPath << "...";
@@ -558,6 +559,8 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
 
         m_settings->registerSetting("NumberOfConcurrentTasks", 10);
         m_settings->registerSetting("NumberOfConcurrentDownloads", 6);
+        m_settings->registerSetting("NumberOfManualRetries", 1);
+        m_settings->registerSetting("RequestTimeout", 60);
 
         QString defaultMonospace;
         int defaultSize = 11;
@@ -592,6 +595,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         m_settings->registerSetting("IconsDir", "icons");
         m_settings->registerSetting("DownloadsDir", QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
         m_settings->registerSetting("DownloadsDirWatchRecursive", false);
+        m_settings->registerSetting("SkinsDir", "skins");
 
         // Editors
         m_settings->registerSetting("JsonEditor", QString());
@@ -659,6 +663,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         // Minecraft mods
         m_settings->registerSetting("ModMetadataDisabled", false);
         m_settings->registerSetting("ModDependenciesDisabled", false);
+        m_settings->registerSetting("SkipModpackUpdatePrompt", false);
 
         // Minecraft offline player name
         m_settings->registerSetting("LastOfflinePlayerName", "");
@@ -813,7 +818,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         m_icons.reset(new IconList(instFolders, setting->get().toString()));
         connect(setting.get(), &Setting::SettingChanged,
                 [&](const Setting&, QVariant value) { m_icons->directoryChanged(value.toString()); });
-        qDebug() << "<> Instance icons intialized.";
+        qDebug() << "<> Instance icons initialized.";
     }
 
     // Themes
@@ -850,24 +855,17 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
     {
         m_metacache.reset(new HttpMetaCache("metacache"));
         m_metacache->addBase("asset_indexes", QDir("assets/indexes").absolutePath());
-        m_metacache->addBase("asset_objects", QDir("assets/objects").absolutePath());
-        m_metacache->addBase("versions", QDir("versions").absolutePath());
         m_metacache->addBase("libraries", QDir("libraries").absolutePath());
-        m_metacache->addBase("minecraftforge", QDir("mods/minecraftforge").absolutePath());
         m_metacache->addBase("fmllibs", QDir("mods/minecraftforge/libs").absolutePath());
-        m_metacache->addBase("liteloader", QDir("mods/liteloader").absolutePath());
         m_metacache->addBase("general", QDir("cache").absolutePath());
         m_metacache->addBase("ATLauncherPacks", QDir("cache/ATLauncherPacks").absolutePath());
         m_metacache->addBase("FTBPacks", QDir("cache/FTBPacks").absolutePath());
-        m_metacache->addBase("ModpacksCHPacks", QDir("cache/ModpacksCHPacks").absolutePath());
         m_metacache->addBase("TechnicPacks", QDir("cache/TechnicPacks").absolutePath());
         m_metacache->addBase("FlamePacks", QDir("cache/FlamePacks").absolutePath());
         m_metacache->addBase("FlameMods", QDir("cache/FlameMods").absolutePath());
         m_metacache->addBase("ModrinthPacks", QDir("cache/ModrinthPacks").absolutePath());
         m_metacache->addBase("ModrinthModpacks", QDir("cache/ModrinthModpacks").absolutePath());
-        m_metacache->addBase("root", QDir::currentPath());
         m_metacache->addBase("translations", QDir("translations").absolutePath());
-        m_metacache->addBase("icons", QDir("cache/icons").absolutePath());
         m_metacache->addBase("meta", QDir("meta").absolutePath());
         m_metacache->Load();
         qDebug() << "<> Cache initialized.";
@@ -879,6 +877,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
     // FIXME: what to do with these?
     m_profilers.insert("jprofiler", std::shared_ptr<BaseProfilerFactory>(new JProfilerFactory()));
     m_profilers.insert("jvisualvm", std::shared_ptr<BaseProfilerFactory>(new JVisualVMFactory()));
+    m_profilers.insert("generic", std::shared_ptr<BaseProfilerFactory>(new GenericProfilerFactory()));
     for (auto profiler : m_profilers.values()) {
         profiler->registerSettings(m_settings);
     }
@@ -947,8 +946,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
                     [[fallthrough]];
                 default: {
                     qDebug() << "Exiting because update lockfile is present";
-                    QMetaObject::invokeMethod(
-                        this, []() { exit(1); }, Qt::QueuedConnection);
+                    QMetaObject::invokeMethod(this, []() { exit(1); }, Qt::QueuedConnection);
                     return;
                 }
             }
@@ -980,8 +978,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
                     [[fallthrough]];
                 default: {
                     qDebug() << "Exiting because update lockfile is present";
-                    QMetaObject::invokeMethod(
-                        this, []() { exit(1); }, Qt::QueuedConnection);
+                    QMetaObject::invokeMethod(this, []() { exit(1); }, Qt::QueuedConnection);
                     return;
                 }
             }
@@ -993,7 +990,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
                               "\n"
                               "You are now running %1 .\n"
                               "Check the Prism Launcher updater log at: \n"
-                              "%1\n"
+                              "%2\n"
                               "for details.")
                                .arg(BuildConfig.printableVersionString())
                                .arg(update_log_path);
@@ -1207,6 +1204,12 @@ void Application::performMainStartupAction()
         m_updater.reset(new PrismExternalUpdater(m_mainWindow, m_rootPath, m_dataPath));
 #endif
         qDebug() << "<> Updater started.";
+    }
+
+    {  // delete instances tmp dirctory
+        auto instDir = m_settings->get("InstanceDir").toString();
+        const QString tempRoot = FS::PathCombine(instDir, ".tmp");
+        FS::deletePath(tempRoot);
     }
 
     if (!m_urlsToImport.isEmpty()) {
@@ -1669,8 +1672,7 @@ QString Application::getJarPath(QString jarFile)
 #if defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD) || defined(Q_OS_OPENBSD)
         FS::PathCombine(m_rootPath, "share", BuildConfig.LAUNCHER_NAME),
 #endif
-        FS::PathCombine(m_rootPath, "jars"),
-        FS::PathCombine(applicationDirPath(), "jars"),
+        FS::PathCombine(m_rootPath, "jars"), FS::PathCombine(applicationDirPath(), "jars"),
         FS::PathCombine(applicationDirPath(), "..", "jars")  // from inside build dir, for debuging
     };
     for (QString p : potentialPaths) {

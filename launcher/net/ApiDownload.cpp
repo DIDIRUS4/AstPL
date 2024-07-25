@@ -21,7 +21,6 @@
 #include "ByteArraySink.h"
 #include "ChecksumValidator.h"
 #include "MetaCacheSink.h"
-#include "net/NetAction.h"
 
 namespace Net {
 
@@ -59,7 +58,6 @@ auto ApiDownload::makeFile(QUrl url, QString path, Options options) -> Download:
 
 void ApiDownload::init()
 {
-    qDebug() << "Setting up api download";
     auto api_headers = new ApiHeaderProxy();
     addHeaderProxy(api_headers);
 }

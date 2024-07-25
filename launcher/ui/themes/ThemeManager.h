@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /*
  *  Prism Launcher - Minecraft Launcher
- *  Copyright (C) 2022 Tayou <git@tayou.org>
+ *  Copyright (C) 2024 Tayou <git@tayou.org>
  *  Copyright (C) 2023 TheKodeToad <TheKodeToad@proton.me>
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -55,6 +55,8 @@ class ThemeManager {
     QString getCatPack(QString catName = "");
     QList<CatPack*> getValidCatPacks();
 
+    void refresh();
+
    private:
     std::map<QString, std::unique_ptr<ITheme>> m_themes;
     std::map<QString, IconTheme> m_icons;
@@ -62,6 +64,7 @@ class ThemeManager {
     QDir m_applicationThemeFolder{ "themes" };
     QDir m_catPacksFolder{ "catpacks" };
     std::map<QString, std::unique_ptr<CatPack>> m_cat_packs;
+    QString currentlySelectedSystemTheme;
 
     void initializeThemes();
     void initializeCatPacks();
