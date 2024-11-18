@@ -99,7 +99,7 @@ if ((CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebI
     message(STATUS "Address Sanitizer enabled for Debug builds, Turn it off with -DDEBUG_ADDRESS_SANITIZER=off")
     if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
         if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-            # using clang with clang-cl front end 
+            # using clang with clang-cl front end
             message(STATUS "Address Sanitizer available on Clang MSVC frontend")
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fsanitize=address /Oy-")
             set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /fsanitize=address /Oy-")
@@ -176,9 +176,11 @@ endif()
 set(Launcher_NEWS_RSS_URL "https://prismlauncher.org/feed/feed.xml" CACHE STRING "URL to fetch Prism Launcher's news RSS feed from.")
 set(Launcher_NEWS_OPEN_URL "https://prismlauncher.org/news" CACHE STRING "URL that gets opened when the user clicks 'More News'")
 set(Launcher_HELP_URL "https://prismlauncher.org/wiki/help-pages/%1" CACHE STRING "URL (with arg %1 to be substituted with page-id) that gets opened when the user requests help")
+set(Launcher_LOGIN_CALLBACK_URL "https://prismlauncher.org/successful-login" CACHE STRING "URL that gets opened when the user successfully logins.")
+set(Launcher_FMLLIBS_BASE_URL "https://files.prismlauncher.org/fmllibs/" CACHE STRING "URL for FML Libraries.")
 
 ######## Set version numbers ########
-set(Launcher_VERSION_MAJOR 9)
+set(Launcher_VERSION_MAJOR 10)
 set(Launcher_VERSION_MINOR 0)
 
 set(Launcher_VERSION_NAME "${Launcher_VERSION_MAJOR}.${Launcher_VERSION_MINOR}")
@@ -205,6 +207,7 @@ set(Launcher_BUG_TRACKER_URL "https://github.com/PrismLauncher/PrismLauncher/iss
 
 # Translations Platform URL
 set(Launcher_TRANSLATIONS_URL "https://hosted.weblate.org/projects/prismlauncher/launcher/" CACHE STRING "URL for the translations platform.")
+set(Launcher_TRANSLATION_FILES_URL "https://i18n.prismlauncher.org/" CACHE STRING "URL for the translations files.")
 
 # Matrix Space
 set(Launcher_MATRIX_URL "https://prismlauncher.org/matrix" CACHE STRING "URL to the Matrix Space")
@@ -220,17 +223,17 @@ set(Launcher_FORCE_BUNDLED_LIBS OFF CACHE BOOL "Prevent using system libraries, 
 set(Launcher_QT_VERSION_MAJOR "6" CACHE STRING "Major Qt version to build against")
 
 # Java downloader
-set(ENABLE_JAVA_DOWNLOADER_DEFAULT ON)
+set(Launcher_ENABLE_JAVA_DOWNLOADER_DEFAULT ON)
 
-# Although we recommend enabling this, we cannot guarantee binary compatibility on 
+# Although we recommend enabling this, we cannot guarantee binary compatibility on
 # differing Linux/BSD/etc distributions. Downstream packagers should be explicitly opt-ing into this
 # feature if they know it will work with their distribution.
 if(UNIX AND NOT APPLE)
-  set(ENABLE_JAVA_DOWNLOADER_DEFAULT OFF)
+  set(Launcher_ENABLE_JAVA_DOWNLOADER_DEFAULT OFF)
 endif()
 
 # Java downloader
-option(ENABLE_JAVA_DOWNLOADER "Build the java downloader feature" ${ENABLE_JAVA_DOWNLOADER_DEFAULT})
+option(Launcher_ENABLE_JAVA_DOWNLOADER "Build the java downloader feature" ${Launcher_ENABLE_JAVA_DOWNLOADER_DEFAULT})
 
 # Native libraries
 if(UNIX AND APPLE)
@@ -435,10 +438,10 @@ elseif(UNIX)
         set(PLUGIN_DEST_DIR "plugins")
         set(BUNDLE_DEST_DIR ".")
         set(RESOURCES_DEST_DIR ".")
-    
+
         # Apps to bundle
         set(APPS "\${CMAKE_INSTALL_PREFIX}/bin/${Launcher_APP_BINARY_NAME}")
-    
+
         # directories to look for dependencies
         set(DIRS ${QT_LIBS_DIR} ${QT_LIBEXECS_DIR} ${CMAKE_LIBRARY_OUTPUT_DIRECTORY} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
     endif()
@@ -492,7 +495,7 @@ if(FORCE_BUNDLED_ZLIB)
     set(SKIP_INSTALL_ALL ON)
     add_subdirectory(libraries/zlib EXCLUDE_FROM_ALL)
 
-    # On OS where unistd.h exists, zlib's generated header defines `Z_HAVE_UNISTD_H`, while the included header does not. 
+    # On OS where unistd.h exists, zlib's generated header defines `Z_HAVE_UNISTD_H`, while the included header does not.
     # We cannot safely undo the rename on those systems, and they generally have packages for zlib anyway.
     check_include_file(unistd.h NEED_GENERATED_ZCONF)
     if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libraries/zlib/zconf.h.included" AND NOT NEED_GENERATED_ZCONF)
@@ -529,10 +532,12 @@ else()
 endif()
 if(NOT cmark_FOUND)
     message(STATUS "Using bundled cmark")
+    set(ORIGINAL_BUILD_TESTING ${BUILD_TESTING})
     set(BUILD_TESTING 0)
-    set(BUILD_SHARED_LIBS 0) 
+    set(BUILD_SHARED_LIBS 0)
     add_subdirectory(libraries/cmark EXCLUDE_FROM_ALL) # Markdown parser
     add_library(cmark::cmark ALIAS cmark)
+    set(BUILD_TESTING ${ORIGINAL_BUILD_TESTING})
 else()
     message(STATUS "Using system cmark")
 endif()

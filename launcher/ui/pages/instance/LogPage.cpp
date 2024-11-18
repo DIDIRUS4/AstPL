@@ -90,7 +90,7 @@ class LogFormatProxyModel : public QIdentityProxyModel {
     QModelIndex find(const QModelIndex& start, const QString& value, bool reverse) const
     {
         QModelIndex parentIndex = parent(start);
-        auto compare = [&](int r) -> QModelIndex {
+        auto compare = [this, start, parentIndex, value](int r) -> QModelIndex {
             QModelIndex idx = index(r, start.column(), parentIndex);
             if (!idx.isValid() || idx == start) {
                 return QModelIndex();
@@ -234,7 +234,7 @@ bool LogPage::apply()
 
 bool LogPage::shouldDisplay() const
 {
-    return m_instance->isRunning() || m_proxy->rowCount() > 0;
+    return true;
 }
 
 void LogPage::on_btnPaste_clicked()
